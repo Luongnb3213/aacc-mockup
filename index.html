@@ -77,6 +77,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     const manifest = JSON.parse(manifestEl.textContent);
     let template = JSON.parse(templateEl.textContent);
 
+    // The supplier archive modal no longer treats active contracts as a
+    // blocking-check row; contract details remain available in their own UI.
+    template = template.replace(
+      /\n  if \(danhMuc === 'supplier'\) \{\n    \/\/ nguon: the Hop dong[\s\S]*?\n  \}\n  if \(danhMuc === 'agent'\)/,
+      "\n  if (danhMuc === 'agent')"
+    );
+    template = template.replace(
+      ' · Hợp đồng còn hiệu lực — mỗi dòng ghi Đạt / Cảnh báo / Chặn cứng kèm số cụ thể',
+      ''
+    );
+
     // Nested page bundles (iframe targets). Each ships ONCE, in the ROOT
     // document's manifest; frame srcs carry an about:blank#<uuid> marker
     // instead of a substitutable uuid. Every document mints the blobs for
