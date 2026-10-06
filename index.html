@@ -1046,3 +1046,128 @@ document.addEventListener('DOMContentLoaded', async function() {
 #supTable .badge.inactive { background:#fff3cd !important; color:#8a5a00 !important; }
 #supTable .badge.inactive::before { background:#d69e00 !important; }
 </style>
+
+<script id="aacc-2026-10-06-merged-check">
+(function () {
+  var old331 = '331 \u00b7 ' + 'Hàng';
+  var new331 = '331 \u00b7 ' + 'Hãng';
+  var revenueTicket = '5111 — Doanh thu bán vé';
+  var revenueService = '5113 — Doanh thu dịch vụ du lịch';
+
+  function patchBundledTemplate() {
+    var el = document.querySelector('script[type="__bundler/template"]');
+    if (!el) return;
+    try {
+      var value = JSON.parse(el.textContent);
+      if (typeof value !== 'string') return;
+      value = value.split(old331).join(new331);
+      value = value.replace(/\['chon','TK 331 chi tiết',1,\['3311[^']*','3312[^']*'\]\],(?:\\n|\n)\s*/g, '');
+      value = value
+        .split('5111 — Doanh thu bán hàng hoá').join(revenueTicket)
+        .split('5111 · Doanh thu bán hàng').join('5111 · Doanh thu bán vé')
+        .split('5113 — Doanh thu cung cấp dịch vụ').join(revenueService)
+        .split('5113 · Doanh thu cung cấp dịch vụ').join('5113 · Doanh thu dịch vụ du lịch')
+        .split('5114 — Doanh thu dịch vụ').join('5114 — Doanh thu hoa hồng')
+        .split('5114 · Doanh thu dịch vụ').join('5114 · Doanh thu hoa hồng')
+        .split('5118 · Doanh thu khác').join('5114 · Doanh thu hoa hồng');
+      el.textContent = JSON.stringify(value);
+    } catch (error) { console.warn('[AACC] Không thể áp dụng bản thay đổi 06/10:', error); }
+  }
+
+  function patchAccountingData() {
+    var data = window.DATA_SPDV;
+    if (data) Object.keys(data).forEach(function (code) {
+      var item = data[code]; if (!item) return;
+      if (item.category === 'Vé máy bay') item.mappingRev = revenueTicket;
+      else if (item.category === 'Khách sạn' || item.category === 'Tour' || item.category === 'Dịch vụ') {
+        item.mappingRev = revenueService;
+        if (item.readyReason) item.readyReason = item.readyReason.replace(/Doanh thu 5111/g, 'Doanh thu 5113');
+      }
+    });
+    var store = window.US008;
+    if (!store || !Array.isArray(store.accounts)) return false;
+    store.accounts = store.accounts.filter(function (account) { return ['3311', '3312', '5112', '5115'].indexOf(account.code) < 0; });
+    [
+      { code: '5111', name: 'Doanh thu bán vé', parent: '511' },
+      { code: '5113', name: 'Doanh thu dịch vụ du lịch', parent: '511' },
+      { code: '5114', name: 'Doanh thu hoa hồng', parent: '511' }
+    ].forEach(function (item) {
+      if (!store.accounts.some(function (account) { return account.code === item.code; })) store.accounts.push({
+        code: item.code, name: item.name, parent: item.parent, level: 2, type: 'Revenue', status: 'Active',
+        isSystem: false, source: 'USER', postable: true, balance: 0, movement: 0, txCount: 0,
+        tracking: { objectTracking: false, objectTypes: [], costItemTracking: false }
+      });
+    });
+    store.accounts.forEach(function (account) { account.postable = !store.accounts.some(function (child) { return child.parent === account.code && child.status === 'Active'; }); });
+    if (typeof store.render === 'function') {
+      var coa = document.getElementById('screen-coa');
+      if (coa && coa.classList.contains('is-active')) store.render();
+    }
+    return true;
+  }
+
+  function patchVisibleLabels() {
+    if (!document.body) return;
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), node;
+    while ((node = walker.nextNode())) node.nodeValue = node.nodeValue
+      .split(old331).join(new331)
+      .split('5111 — Doanh thu bán hàng hoá').join(revenueTicket)
+      .split('5111 · Doanh thu bán hàng').join('5111 · Doanh thu bán vé')
+      .split('5113 — Doanh thu cung cấp dịch vụ').join(revenueService)
+      .split('5113 · Doanh thu cung cấp dịch vụ').join('5113 · Doanh thu dịch vụ du lịch')
+      .split('5114 — Doanh thu dịch vụ').join('5114 — Doanh thu hoa hồng')
+      .split('5114 · Doanh thu dịch vụ').join('5114 · Doanh thu hoa hồng');
+  }
+
+  function supplierRow(code) { return document.querySelector('#supTable tbody tr[data-code="' + String(code).replace(/"/g, '\\"') + '"]'); }
+  function setSupplierStatus(code, active) {
+    var data = window.DATA_NCC && window.DATA_NCC[code];
+    if (data) { data.statusEnum = active ? 'Active' : 'Inactive'; data.status = active ? 'Đang hoạt động' : 'Ngừng hoạt động'; }
+    var row = supplierRow(code); if (!row) return;
+    row.setAttribute('data-status', active ? 'active' : 'inactive');
+    var cells = row.querySelectorAll('td');
+    if (cells[5]) cells[5].innerHTML = '<span class="badge ' + (active ? 'active' : '') + '" style="' + (active ? '' : 'background:#fff3cd;color:#8a5a00;') + '">' + (active ? 'Đang hoạt động' : 'Ngừng hoạt động') + '</span>';
+    if (cells[6]) cells[6].innerHTML = active ? '<span class="flag ready">✓ Sẵn sàng</span>' : '<span class="flag notready">! Ngừng hoạt động</span>';
+    var actions = row.querySelector('.kh-actions'); if (!actions) return;
+    var reopen = actions.querySelector('[data-aacc-molai]');
+    if (active) { if (reopen) reopen.remove(); }
+    else if (!reopen) {
+      var button = document.createElement('button');
+      button.className = 'ta-btn'; button.setAttribute('data-aacc-molai', '1'); button.title = 'Đưa trở lại hoạt động'; button.textContent = '▶';
+      button.style.cssText = 'background:none;border:1px solid #d1d5db;padding:3px 8px;margin:0 2px;cursor:pointer;border-radius:4px;font-size:14px';
+      button.addEventListener('click', function (event) { event.stopPropagation(); event.preventDefault(); window.aaccOpenThaoTac('supplier', 'unpause', code); });
+      actions.appendChild(button);
+    }
+  }
+
+  var originalSubmit = null;
+  function workingSubmit() {
+    var state = window.aaccThaoTacState || {};
+    if (state.danhMuc !== 'supplier' || (state.action !== 'archive' && state.action !== 'unpause' && state.action !== 'unarchive')) {
+      if (originalSubmit && originalSubmit !== workingSubmit) return originalSubmit();
+      return;
+    }
+    var reasonEl = document.getElementById('aaccThaoTacLyDo'), reason = reasonEl ? reasonEl.value.trim() : '';
+    if (reason.length < 20) { alert('Lý do bắt buộc và tối thiểu 20 ký tự (hiện: ' + reason.length + ' ký tự)'); return; }
+    if (state.action === 'archive') {
+      var confirmEl = document.getElementById('aaccThaoTacXacNhan');
+      if (!confirmEl || !confirmEl.checked) { alert('Vui lòng tick ô xác nhận đã rà soát trước khi ngừng hoạt động'); return; }
+      setSupplierStatus(state.code, false);
+    } else setSupplierStatus(state.code, true);
+    if (typeof window.aaccCloseThaoTac === 'function') window.aaccCloseThaoTac();
+  }
+  function installStatusHandler() {
+    if (typeof window.aaccSubmitThaoTac === 'function' && window.aaccSubmitThaoTac !== workingSubmit) originalSubmit = window.aaccSubmitThaoTac;
+    window.aaccSubmitThaoTac = workingSubmit;
+  }
+
+  patchBundledTemplate();
+  document.addEventListener('DOMContentLoaded', function () {
+    var tries = 0, timer = setInterval(function () {
+      patchAccountingData(); patchVisibleLabels(); installStatusHandler();
+      if (++tries > 40) clearInterval(timer);
+    }, 50);
+  });
+  new MutationObserver(function () { patchAccountingData(); patchVisibleLabels(); }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+</script>
